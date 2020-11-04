@@ -37,7 +37,7 @@
     <version.asciidoctor-maven-plugin>1.5.5</version.asciidoctor-maven-plugin>
     <version.asciidoctorj>1.5.4</version.asciidoctorj>
     <version.assertj-core>3.18.0</version.assertj-core>
-    <version.bouncycastle.bcpkix>1.61</version.bouncycastle.bcpkix>
+    <version.bouncycastle.bcpkix>1.67</version.bouncycastle.bcpkix>
     <version.commons-codec>1.15</version.commons-codec>
     <version.commons-compress>1.19</version.commons-compress>
     <version.commons-io>2.6</version.commons-io>
