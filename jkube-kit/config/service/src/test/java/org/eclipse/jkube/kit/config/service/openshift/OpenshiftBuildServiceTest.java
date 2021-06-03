@@ -21,6 +21,8 @@ import io.fabric8.openshift.api.model.Build;
 import io.fabric8.openshift.api.model.BuildBuilder;
 import io.fabric8.openshift.api.model.BuildConfig;
 import io.fabric8.openshift.api.model.BuildConfigBuilder;
+import io.fabric8.openshift.api.model.BuildOutput;
+import io.fabric8.openshift.api.model.BuildOutputBuilder;
 import io.fabric8.openshift.api.model.BuildStrategyBuilder;
 import io.fabric8.openshift.api.model.ImageStream;
 import io.fabric8.openshift.api.model.ImageStreamBuilder;
@@ -100,6 +102,10 @@ public class OpenshiftBuildServiceTest {
 
     private BuildServiceConfig.BuildServiceConfigBuilder defaultConfigSecret;
 
+    private BuildServiceConfig.BuildServiceConfigBuilder dockerImageConfigSecret;
+
+    private BuildServiceConfig.BuildServiceConfigBuilder dockerImageConfig;
+
     @Before
     public void init() throws Exception {
         logger = new KitLogger.StdoutLogger();
@@ -149,6 +155,22 @@ public class OpenshiftBuildServiceTest {
                 .buildRecreateMode(BuildRecreateMode.none)
                 .s2iBuildNameSuffix("-s2i-suffix2")
                 .openshiftPullSecret("pullsecret-fabric8")
+                .jKubeBuildStrategy(JKubeBuildStrategy.s2i);
+
+        dockerImageConfig = BuildServiceConfig.builder()
+                .buildDirectory(baseDir)
+                .buildRecreateMode(BuildRecreateMode.none)
+                .s2iBuildNameSuffix("-s2i-suffix2")
+                .buildOutputKind("DockerImage")
+                .jKubeBuildStrategy(JKubeBuildStrategy.s2i);
+
+        dockerImageConfigSecret = BuildServiceConfig.builder()
+                .buildDirectory(baseDir)
+                .buildRecreateMode(BuildRecreateMode.none)
+                .s2iBuildNameSuffix("-s2i-suffix2")
+                .openshiftPullSecret("pullsecret-fabric8")
+                .openshiftPushSecret("pushsecret-fabric8")
+                .buildOutputKind("DockerImage")
                 .jKubeBuildStrategy(JKubeBuildStrategy.s2i);
     }
 
@@ -509,6 +531,60 @@ public class OpenshiftBuildServiceTest {
         });
     }
 
+
+    @Test
+    public void testSuccessfulDockerImageOutputBuild() throws Exception {
+        retryInMockServer(() -> {
+            BuildServiceConfig config = dockerImageConfig.build();
+            // @formatter:off
+            new Expectations() {{
+                jKubeServiceHub.getBuildServiceConfig(); result = config;
+            }};
+            // @formatter:on
+            WebServerEventCollector collector = createMockServer(config, true, 50, false, false);
+
+            DefaultOpenShiftClient client = (DefaultOpenShiftClient) mockServer.getOpenshiftClient();
+            LOG.info("Current write timeout is : {}", client.getHttpClient().writeTimeoutMillis());
+            LOG.info("Current read timeout is : {}", client.getHttpClient().readTimeoutMillis());
+            LOG.info("Retry on failure : {}", client.getHttpClient().retryOnConnectionFailure());
+            OpenshiftBuildService service = new OpenshiftBuildService(client, logger, jKubeServiceHub);
+            service.build(image);
+
+            // we should Foadd a better way to assert that a certain call has been made
+            assertTrue(mockServer.getMockServer().getRequestCount() > 8);
+            collector.assertEventsRecordedInOrder("build-config-check", "new-build-config", "pushed");
+            assertEquals("{\"apiVersion\":\"build.openshift.io/v1\",\"kind\":\"BuildConfig\",\"metadata\":{\"name\":\"myapp-s2i-suffix2\"},\"spec\":{\"output\":{\"to\":{\"kind\":\"DockerImage\",\"name\":\"myapp:latest\"}},\"source\":{\"type\":\"Binary\"},\"strategy\":{\"sourceStrategy\":{\"forcePull\":false,\"from\":{\"kind\":\"DockerImage\",\"name\":\"myapp\"}},\"type\":\"Source\"}}}", collector.getBodies().get(1));
+            collector.assertEventsNotRecorded("patch-build-config");
+        });
+    }
+
+    @Test
+    public void testSuccessfulDockerImageOutputBuildSecret() throws Exception {
+        retryInMockServer(() -> {
+            BuildServiceConfig config = dockerImageConfigSecret.build();
+            // @formatter:on
+            new Expectations() {{
+                jKubeServiceHub.getBuildServiceConfig(); result = config;
+            }};
+            // @formatter:off
+            WebServerEventCollector collector = createMockServer(config, true, 50, false, false);
+
+            DefaultOpenShiftClient client = (DefaultOpenShiftClient) mockServer.getOpenshiftClient();
+            LOG.info("Current write timeout is : {}", client.getHttpClient().writeTimeoutMillis());
+            LOG.info("Current read timeout is : {}", client.getHttpClient().readTimeoutMillis());
+            LOG.info("Retry on failure : {}", client.getHttpClient().retryOnConnectionFailure());
+            OpenshiftBuildService service = new OpenshiftBuildService(client, logger, jKubeServiceHub);
+            service.build(image);
+
+            // we should Foadd a better way to assert that a certain call has been made
+            assertTrue(mockServer.getMockServer().getRequestCount() > 8);
+            collector.assertEventsRecordedInOrder("build-config-check", "new-build-config", "pushed");
+            assertEquals("{\"apiVersion\":\"build.openshift.io/v1\",\"kind\":\"BuildConfig\",\"metadata\":{\"name\":\"myapp-s2i-suffix2\"},\"spec\":{\"output\":{\"pushSecret\":{\"name\":\"pushsecret-fabric8\"},\"to\":{\"kind\":\"DockerImage\",\"name\":\"myapp:latest\"}},\"source\":{\"type\":\"Binary\"},\"strategy\":{\"sourceStrategy\":{\"forcePull\":false,\"from\":{\"kind\":\"DockerImage\",\"name\":\"myapp\"}},\"type\":\"Source\"}}}", collector.getBodies().get(1));
+            collector.assertEventsNotRecorded("patch-build-config");
+        });
+    }
+
+
     @FunctionalInterface
     private interface MockServerRetryable {
         void run() throws JKubeServiceException, IOException;
@@ -536,17 +612,25 @@ public class OpenshiftBuildServiceTest {
     protected WebServerEventCollector createMockServer(
         BuildServiceConfig config, boolean success, long buildDelay, boolean buildConfigExists, boolean imageStreamExists) {
         WebServerEventCollector collector = new WebServerEventCollector();
+        
 
         final String s2iBuildNameSuffix = Optional
                 .ofNullable(config.getS2iBuildNameSuffix())
                 .orElseGet(() -> config.getJKubeBuildStrategy() == JKubeBuildStrategy.s2i ?
                         "-s2i" : "");
 
+        final String buildOutputKind = Optional.ofNullable(config.getBuildOutputKind()).orElse("ImageStreamTag");                         
+
         BuildConfig bc = new BuildConfigBuilder()
                 .withNewMetadata()
                 .withName(projectName + s2iBuildNameSuffix)
                 .endMetadata()
                 .withNewSpec()
+                .withNewOutput()
+                    .withNewTo()
+                    .withKind(buildOutputKind)
+                    .endTo()
+                    .endOutput()
                 .endSpec()
                 .build();
 
@@ -561,6 +645,10 @@ public class OpenshiftBuildServiceTest {
                             .withNewDockerStrategy()
                             .withNewPullSecret(config.getOpenshiftPullSecret())
                             .endDockerStrategy().build())
+                    .withNewOutput()
+                        .withNewPushSecret().withName(config.getOpenshiftPushSecret()).endPushSecret()
+                        .withNewTo().withKind(buildOutputKind).endTo()
+                        .endOutput()
                     .endSpec()
                     .build();
         }

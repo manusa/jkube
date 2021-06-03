@@ -90,6 +90,7 @@ public class OpenshiftBuildService implements BuildService {
 
     private static final String DEFAULT_S2I_BUILD_SUFFIX = "-s2i";
     public static final String DEFAULT_S2I_SOURCE_TYPE = "Binary";
+    public static final String DEFAULT_BUILD_OUTPUT_KIND = "ImageStreamTag";
     public static final String REQUESTS = "requests";
     public static final String LIMITS = "limits";
 
@@ -215,10 +216,7 @@ public class OpenshiftBuildService implements BuildService {
         String outputImageStreamTag = imageStreamName + ":" + (imageName.getTag() != null ? imageName.getTag() : "latest");
 
         BuildStrategy buildStrategyResource = createBuildStrategy(imageConfig, config.getJKubeBuildStrategy(), openshiftPullSecret);
-        BuildOutput buildOutput = new BuildOutputBuilder().withNewTo()
-                .withKind("ImageStreamTag")
-                .withName(outputImageStreamTag)
-                .endTo().build();
+        BuildOutput buildOutput = createBuildOutput(config, outputImageStreamTag);
 
         // Fetch existing build config
         BuildConfig buildConfig = client.buildConfigs().withName(buildName).get();
@@ -378,6 +376,18 @@ public class OpenshiftBuildService implements BuildService {
         } else {
             throw new IllegalArgumentException("Unsupported BuildStrategy " + osBuildStrategy);
         }
+    }
+
+    private BuildOutput createBuildOutput(BuildServiceConfig config, String outputImageStreamTag) {
+        final String buildOutputKind = Optional.ofNullable(config.getBuildOutputKind()).orElse(DEFAULT_BUILD_OUTPUT_KIND);
+        BuildOutputBuilder buildOutputBuilder = new BuildOutputBuilder().withNewTo()
+                .withKind(buildOutputKind)
+                .withName(outputImageStreamTag)
+                .endTo();
+        if(config.getOpenshiftPushSecret()!= null) {
+            buildOutputBuilder.withNewPushSecret().withName(config.getOpenshiftPushSecret()).endPushSecret();
+        }
+        return buildOutputBuilder.build();
     }
 
     private Boolean checkForNocache(ImageConfiguration imageConfig) {
