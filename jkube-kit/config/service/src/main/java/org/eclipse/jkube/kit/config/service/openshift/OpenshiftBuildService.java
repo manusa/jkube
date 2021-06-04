@@ -90,7 +90,9 @@ public class OpenshiftBuildService implements BuildService {
 
     private static final String DEFAULT_S2I_BUILD_SUFFIX = "-s2i";
     public static final String DEFAULT_S2I_SOURCE_TYPE = "Binary";
-    public static final String DEFAULT_BUILD_OUTPUT_KIND = "ImageStreamTag";
+    private static final String IMAGE_STREAM_TAG =  "ImageStreamTag";
+    private static final String DOCKER_IMAGE =  "DockerImage";
+    private static final String DEFAULT_BUILD_OUTPUT_KIND = IMAGE_STREAM_TAG;
     public static final String REQUESTS = "requests";
     public static final String LIMITS = "limits";
 
@@ -212,11 +214,9 @@ public class OpenshiftBuildService implements BuildService {
     protected String updateOrCreateBuildConfig(BuildServiceConfig config, OpenShiftClient client, KubernetesListBuilder builder, ImageConfiguration imageConfig, String openshiftPullSecret) {
         ImageName imageName = new ImageName(imageConfig.getName());
         String buildName = getS2IBuildName(config, imageName);
-        String imageStreamName = getImageStreamName(imageName);
-        String outputImageStreamTag = imageStreamName + ":" + (imageName.getTag() != null ? imageName.getTag() : "latest");
 
         BuildStrategy buildStrategyResource = createBuildStrategy(imageConfig, config.getJKubeBuildStrategy(), openshiftPullSecret);
-        BuildOutput buildOutput = createBuildOutput(config, outputImageStreamTag);
+        BuildOutput buildOutput = createBuildOutput(config, imageName);
 
         // Fetch existing build config
         BuildConfig buildConfig = client.buildConfigs().withName(buildName).get();
@@ -378,12 +378,14 @@ public class OpenshiftBuildService implements BuildService {
         }
     }
 
-    private BuildOutput createBuildOutput(BuildServiceConfig config, String outputImageStreamTag) {
+    private BuildOutput createBuildOutput(BuildServiceConfig config, ImageName imageName) {
         final String buildOutputKind = Optional.ofNullable(config.getBuildOutputKind()).orElse(DEFAULT_BUILD_OUTPUT_KIND);
-        BuildOutputBuilder buildOutputBuilder = new BuildOutputBuilder().withNewTo()
-                .withKind(buildOutputKind)
-                .withName(outputImageStreamTag)
-                .endTo();
+        final String outputImageStreamTag = getImageStreamName(imageName) + ":" + (imageName.getTag() != null ? imageName.getTag() : "latest");
+        final BuildOutputBuilder buildOutputBuilder = new BuildOutputBuilder();
+        buildOutputBuilder.withNewTo().withKind(buildOutputKind).withName(outputImageStreamTag).endTo();
+        if (DOCKER_IMAGE.equals(buildOutputKind)) {
+            buildOutputBuilder.editTo().withName(imageName.getFullName()).endTo();
+        }
         if(config.getOpenshiftPushSecret()!= null) {
             buildOutputBuilder.withNewPushSecret().withName(config.getOpenshiftPushSecret()).endPushSecret();
         }

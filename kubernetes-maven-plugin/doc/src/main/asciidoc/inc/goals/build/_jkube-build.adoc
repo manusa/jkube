@@ -273,6 +273,14 @@ ifeval::["{goal-prefix}" == "oc"]
 | `jkube.build.pullSecret`
 endif::[]
 
+ifeval::["{goal-prefix}" == "oc"]
+| *pushSecret*
+| The name of pushSecret to be used to push the final image in case pushing from a
+  protected registry which requires authentication.
+
+| `jkube.build.pushSecret`
+endif::[]
+
 | *registry*
 | Specify globally a registry to use for pulling and pushing images. See <<registry,Registry handling>> for details.
 | `jkube.docker.registry`
