@@ -66,7 +66,7 @@
     <version.plexus-archiver>3.5</version.plexus-archiver>
     <version.plexus-classworlds>2.6.0</version.plexus-classworlds>
     <version.plexus-build-api>0.0.7</version.plexus-build-api>
-    <version.plexus-utils>3.0.24</version.plexus-utils>
+    <version.plexus-utils>3.4.1</version.plexus-utils>
     <version.shrinkwrap>1.2.6</version.shrinkwrap>
     <version.slf4j-api>1.7.25</version.slf4j-api>
     <version.snakeyaml>1.28</version.snakeyaml>
