@@ -33,6 +33,7 @@ import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.ConfigurationPublications;
 import org.gradle.api.artifacts.DependencySet;
 import org.gradle.api.artifacts.PublishArtifactSet;
+import org.gradle.api.file.Directory;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.plugins.JavaPluginConvention;
 import org.gradle.api.tasks.SourceSet;
@@ -111,7 +112,8 @@ public class GradleUtil {
       final SourceSetContainer sourceSetContainer = gradleProject.getConvention().getPlugin(JavaPluginConvention.class)
           .getSourceSets();
       if (sourceSetContainer != null) {
-        return sourceSetContainer.getByName(SourceSet.MAIN_SOURCE_SET_NAME).getJava().getOutputDir();
+        return sourceSetContainer.getByName(SourceSet.MAIN_SOURCE_SET_NAME).getJava().getDestinationDirectory()
+            .getAsFile().getOrNull();
       }
     } catch (IllegalStateException | UnknownDomainObjectException ex) {
       // No matching SourceSet was found
